@@ -22,7 +22,6 @@ fn main() {
             macos::build();
         }
         Ok("windows") => {
-            #[cfg(target_os = "windows")]
             windows::build();
         }
         _ => (),
@@ -246,9 +245,9 @@ mod macos {
     }
 }
 
-#[cfg(target_os = "windows")]
 mod windows {
     use std::{
+        env::var,
         fs,
         io::Write,
         path::{Path, PathBuf},
@@ -256,16 +255,20 @@ mod windows {
     };
 
     pub(super) fn build() {
-        // Compile HLSL shaders
-        #[cfg(not(debug_assertions))]
-        compile_shaders();
+        let is_cross = var("TARGET").expect("TARGET is set by Cargo")
+            != var("HOST").expect("HOST is set by Cargo");
+
+        // Compile shaders on debug or cross-compilation
+        if cfg!(debug_assertions) || is_cross {
+            compile_shaders();
+        }
 
         // Embed the Windows manifest and resource file
-        #[cfg(feature = "windows-manifest")]
+        #[cfg(all(feature = "windows-manifest", target_os = "windows"))]
         embed_resource();
     }
 
-    #[cfg(feature = "windows-manifest")]
+    #[cfg(all(feature = "windows-manifest", target_os = "windows"))]
     fn embed_resource() {
         let manifest = std::path::Path::new("resources/windows/gpui.manifest.xml");
         let rc_file = std::path::Path::new("resources/windows/gpui.rc");
@@ -401,15 +404,15 @@ mod windows {
     ) {
         let output = Command::new(fxc_path)
             .args([
-                "/T",
+                "-T",
                 target,
-                "/E",
+                "-E",
                 entry_point,
-                "/Fh",
+                "-Fh",
                 output_path,
-                "/Vn",
+                "-Vn",
                 var_name,
-                "/O3",
+                "-O3",
                 shader_path,
             ])
             .output();
@@ -419,15 +422,15 @@ mod windows {
                 if result.status.success() {
                     return;
                 }
-                eprintln!(
-                    "Shader compilation failed for {}:\n{}",
+                println!(
+                    "cargo::error=Shader compilation failed for {}:\n{}",
                     entry_point,
                     String::from_utf8_lossy(&result.stderr)
                 );
                 process::exit(1);
             }
             Err(e) => {
-                eprintln!("Failed to run fxc for {}: {}", entry_point, e);
+                println!("cargo::error=Failed to run fxc for {}: {}", entry_point, e);
                 process::exit(1);
             }
         }
