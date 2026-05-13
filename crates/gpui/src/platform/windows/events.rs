@@ -755,7 +755,12 @@ impl WindowsWindowInner {
             })
             .detach();
 
-        None
+        // Return Some(0) to prevent DefWindowProcW from performing default
+        // activation handling. For WS_EX_TOPMOST | WS_POPUP windows (Overlay),
+        // the default WM_ACTIVATE processing can cause re-entrant message
+        // dispatch during CreateWindowExW, leading to a deadlock when creating
+        // child windows from within an Overlay window.
+        Some(0)
     }
 
     fn handle_create_msg(&self, handle: HWND) -> Option<isize> {
