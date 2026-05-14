@@ -874,11 +874,11 @@ impl MacWindow {
                 let _: () = msg_send![native_window, setIgnoresMouseEvents: YES];
             }
 
-            if focus && show {
-                native_window.makeKeyAndOrderFront_(nil);
-            } else if show {
-                native_window.orderFront_(nil);
-            }
+            // if focus && show {
+            //     native_window.makeKeyAndOrderFront_(nil);
+            // } else if show {
+            //     native_window.orderFront_(nil);
+            // }
 
             // Set the initial position of the window to the specified origin.
             // Although we already specified the position using `initWithContentRect_styleMask_backing_defer_screen_`,
@@ -886,6 +886,44 @@ impl MacWindow {
             //  is different from the primary screen.
             NSWindow::setFrameTopLeftPoint_(native_window, window_rect.origin);
             window.0.lock().move_traffic_light();
+
+            // For PopUp/Overlay windows (NSPanel with NSWindowStyleMaskNonactivatingPanel),
+            // makeKeyAndOrderFront/orderFront can cause a freeze when called from within
+            // another window's event handler (e.g., opening a child window from an Overlay
+            // window's click handler). The synchronous ordering can trigger re-entrant run loop
+            // processing that conflicts with the current event dispatch.
+            // Fix: defer the window ordering to the next run loop iteration using
+            // dispatch_async_f, which avoids the synchronous blocking.
+            //
+            // 对于弹出窗口或覆盖窗口（使用 NSWindowStyleMaskNonactivatingPanel 的 NSPanel），
+            // 在其他窗口的事件处理进程中调用 makeKeyAndOrderFront 或 orderFront 可能会导致系统卡顿。例如，当从覆盖窗口的点击处理进程中打开子窗口时，这种同步操作可能会引发重入式运行循环，从而与当前的事件调度机制发生冲突。
+            // 解决方案是使用 dispatchasyncf 将窗口排序操作推迟到下一个运行循环迭代中执行，这样就可以避免同步阻塞现象的发生。
+            if show {
+                unsafe extern "C" fn order_front_async(context: *mut std::ffi::c_void) {
+                    let window = context as id;
+                    let _: () = msg_send![window, orderFront: nil];
+                }
+                unsafe extern "C" fn make_key_and_order_front_async(
+                    context: *mut std::ffi::c_void,
+                ) {
+                    let window = context as id;
+                    let _: () = msg_send![window, makeKeyAndOrderFront: nil];
+                }
+
+                if focus {
+                    dispatch_async_f(
+                        dispatch_get_main_queue(),
+                        native_window as *mut std::ffi::c_void,
+                        Some(make_key_and_order_front_async),
+                    );
+                } else {
+                    dispatch_async_f(
+                        dispatch_get_main_queue(),
+                        native_window as *mut std::ffi::c_void,
+                        Some(order_front_async),
+                    );
+                }
+            }
 
             pool.drain();
 
