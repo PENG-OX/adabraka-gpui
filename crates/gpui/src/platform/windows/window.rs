@@ -466,7 +466,26 @@ impl WindowsWindow {
             this.state.borrow().border_offset,
         )?;
         if params.show {
-            unsafe { SetWindowPlacement(hwnd, &placement)? };
+            // For WS_EX_TOPMOST | WS_POPUP windows (Overlay), SetWindowPlacement
+            // can cause a deadlock when called from within another window's message
+            // handler (e.g., opening a child window from an Overlay window's click
+            // handler). The z-order management for topmost windows triggers synchronous
+            // message dispatch that conflicts with the already-dispatching message loop.
+            // Fix: set the position/size first without showing, then show asynchronously.
+            //
+            // 对于 WS_EX_TOPMOST | WS_POPUP 窗口（Overlay），SetWindowPlacement
+            // 在其他窗口的消息处理回调中调用时可能死锁。
+            // 原因：topmost 窗口的 Z 序管理会触发同步消息派发，
+            //       与当前正在执行的 DispatchMessageW 产生冲突。
+            // 修复：先设置位置/大小（不显示），再异步显示窗口。
+            if params.kind == WindowKind::Overlay {
+                let mut placement_hide = placement;
+                placement_hide.showCmd = SW_HIDE.0 as u32;
+                unsafe { SetWindowPlacement(hwnd, &placement_hide)? };
+                unsafe { ShowWindowAsync(hwnd, SW_SHOW).ok()? };
+            } else {
+                unsafe { SetWindowPlacement(hwnd, &placement)? };
+            }
         } else {
             this.state.borrow_mut().initial_placement = Some(WindowOpenStatus {
                 placement,
