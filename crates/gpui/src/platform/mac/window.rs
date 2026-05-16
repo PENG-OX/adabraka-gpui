@@ -5,7 +5,7 @@ use crate::{
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, PlatformAtlas, PlatformDisplay,
     PlatformInput, PlatformWindow, Point, PromptButton, PromptLevel, RequestFrameOptions,
     SharedString, Size, SystemWindowTab, Timer, WindowAppearance, WindowBackgroundAppearance,
-    WindowBounds, WindowControlArea, WindowKind, WindowParams, dispatch_get_main_queue,
+    WindowBounds, WindowControlArea, WindowKind, WindowParams, WindowShape, dispatch_get_main_queue,
     dispatch_sys::dispatch_async_f, platform::PlatformInputHandler, point, px, size,
 };
 use block::ConcreteBlock;
@@ -583,6 +583,7 @@ impl MacWindow {
             window_min_size,
             tabbing_identifier,
             mouse_passthrough,
+            shape,
         }: WindowParams,
         executor: ForegroundExecutor,
         renderer_context: renderer::Context,
@@ -923,6 +924,11 @@ impl MacWindow {
                         Some(order_front_async),
                     );
                 }
+            }
+
+            // Apply window shape (circular, rounded rect, etc.)
+            if let Some(ref shape) = shape {
+                apply_window_shape(native_window, shape, bounds.size);
             }
 
             pool.drain();
@@ -2633,6 +2639,54 @@ unsafe fn display_id_for_screen(screen: id) -> CGDirectDisplayID {
         let screen_number = device_description.objectForKey_(screen_number_key);
         let screen_number: NSUInteger = msg_send![screen_number, unsignedIntegerValue];
         screen_number as CGDirectDisplayID
+    }
+}
+
+fn apply_window_shape(native_window: id, shape: &WindowShape, window_size: Size<Pixels>) {
+    match shape {
+        WindowShape::Circle { radius } => {
+            let r = radius.map(|r| r.0 as f64).unwrap_or_else(|| {
+                let min_dim = window_size.width.0.min(window_size.height.0);
+                min_dim as f64 / 2.0
+            });
+            unsafe {
+                let content_view: id = msg_send![native_window, contentView];
+                if content_view != nil {
+                    let layer: id = msg_send![content_view, layer];
+                    if layer != nil {
+                        let shape_layer: id = msg_send![class!(CAShapeLayer), layer];
+                        let center = CGPoint::new(r, r);
+                        let rect = CGRect::new(
+                            CGPoint::new(0.0, 0.0),
+                            CGSize::new(r * 2.0, r * 2.0),
+                        );
+                        let circle_path: id = msg_send![class!(NSBezierPath), bezierPathWithOvalInRect: NSRect::new(center, CGSize::new(r * 2.0, r * 2.0))];
+                        let cg_path: *mut c_void = msg_send![circle_path, CGPath];
+                        let _: () = msg_send![shape_layer, setPath: cg_path];
+                        let _: () = msg_send![layer, setMask: shape_layer];
+                    }
+                }
+            }
+        }
+        WindowShape::RoundedRect { corner_radius } => {
+            let r = corner_radius.0 as f64;
+            let w = window_size.width.0 as f64;
+            let h = window_size.height.0 as f64;
+            unsafe {
+                let content_view: id = msg_send![native_window, contentView];
+                if content_view != nil {
+                    let layer: id = msg_send![content_view, layer];
+                    if layer != nil {
+                        let shape_layer: id = msg_send![class!(CAShapeLayer), layer];
+                        let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w, h));
+                        let round_path: id = msg_send![class!(NSBezierPath), bezierPathWithRoundedRect: rect xRadius: r yRadius: r];
+                        let cg_path: *mut c_void = msg_send![round_path, CGPath];
+                        let _: () = msg_send![shape_layer, setPath: cg_path];
+                        let _: () = msg_send![layer, setMask: shape_layer];
+                    }
+                }
+            }
+        }
     }
 }
 
