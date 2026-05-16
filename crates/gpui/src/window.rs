@@ -951,6 +951,7 @@ impl Window {
             #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             tabbing_identifier,
             mouse_passthrough,
+            shape,
         } = options;
 
         let bounds = window_bounds
@@ -972,6 +973,8 @@ impl Window {
                 #[cfg(target_os = "macos")]
                 tabbing_identifier,
                 mouse_passthrough,
+                #[cfg(any(target_os = "windows", target_os = "macos"))]
+                shape,
             },
         )?;
 

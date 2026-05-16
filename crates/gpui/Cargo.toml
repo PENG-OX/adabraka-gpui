@@ -209,6 +209,10 @@ path = "examples/window_positioning.rs"
 name = "window_shadow"
 path = "examples/window_shadow.rs"
 
+[[example]]
+name="window_shape"
+path="examples/window_shape.rs"
+
 [[test]]
 name = "action_macros"
 path = "tests/action_macros.rs"

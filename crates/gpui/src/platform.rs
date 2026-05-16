@@ -1239,6 +1239,24 @@ pub struct WindowOptions {
 
     /// Whether the window should allow mouse events to pass through to windows behind it
     pub mouse_passthrough: bool,
+
+    /// The shape of the window, allowing for circular or rounded rectangular windows
+    pub shape: Option<WindowShape>,
+}
+
+/// The shape of a window
+#[derive(Debug, Clone)]
+pub enum WindowShape {
+    /// A circular window with the given radius
+    Circle {
+        /// The radius of the circle in pixels. If None, uses half the smaller of width/height
+        radius: Option<Pixels>,
+    },
+    /// A rounded rectangle with the given corner radius
+    RoundedRect {
+        /// The radius of the corners in pixels
+        corner_radius: Pixels,
+    },
 }
 
 /// The variables that can be configured when creating a new window
@@ -1291,6 +1309,9 @@ pub(crate) struct WindowParams {
 
     #[allow(dead_code)]
     pub mouse_passthrough: bool,
+
+    #[allow(dead_code)]
+    pub shape: Option<WindowShape>,
 }
 
 /// Represents the status of how a window should be opened.
@@ -1350,6 +1371,7 @@ impl Default for WindowOptions {
             window_decorations: None,
             tabbing_identifier: None,
             mouse_passthrough: false,
+            shape: None,
         }
     }
 }

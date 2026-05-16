@@ -348,6 +348,7 @@ struct WindowCreateContext {
     appearance: WindowAppearance,
     disable_direct_composition: bool,
     directx_devices: DirectXDevices,
+    shape: Option<WindowShape>,
 }
 
 impl WindowsWindow {
@@ -432,6 +433,7 @@ impl WindowsWindow {
             appearance,
             disable_direct_composition,
             directx_devices,
+            shape: params.shape,
         };
         let creation_result = unsafe {
             CreateWindowExW(
@@ -456,6 +458,9 @@ impl WindowsWindow {
         let hwnd = creation_result?;
 
         register_drag_drop(&this)?;
+        if let Some(ref shape) = context.shape {
+            apply_window_shape(hwnd, shape, params.bounds.size);
+        }
         configure_dwm_dark_mode(hwnd, appearance);
         this.state.borrow_mut().border_offset.update(hwnd)?;
         let placement = retrieve_window_placement(
@@ -1440,6 +1445,34 @@ fn set_window_composition_attribute(hwnd: HWND, color: Option<Color>, state: u32
                 cb_data: std::mem::size_of::<AccentPolicy>(),
             };
             let _ = set_window_composition_attribute(hwnd, &mut data as *mut _ as _);
+        }
+    }
+}
+
+fn apply_window_shape(hwnd: HWND, shape: &WindowShape, window_size: Size<Pixels>) {
+    let region = match shape {
+        WindowShape::Circle { radius } => {
+            let r = radius.map(|r| r.0 as i32).unwrap_or_else(|| {
+                let min_dim = window_size.width.0.min(window_size.height.0);
+                (min_dim / 2.0) as i32
+            });
+            unsafe {
+                CreateEllipticRgn(0, 0, r * 2, r * 2)
+            }
+        }
+        WindowShape::RoundedRect { corner_radius } => {
+            let r = corner_radius.0 as i32;
+            let w = window_size.width.0 as i32;
+            let h = window_size.height.0 as i32;
+            unsafe {
+                CreateRoundRectRgn(0, 0, w, h, r, r)
+            }
+        }
+    };
+
+    if !region.is_invalid() {
+        unsafe {
+            SetWindowRgn(hwnd, Some(region), true);
         }
     }
 }
